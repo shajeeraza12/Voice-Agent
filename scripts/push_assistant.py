@@ -73,7 +73,14 @@ def main() -> None:
     url = f"https://api.vapi.ai/assistant/{assistant_id}" if assistant_id else "https://api.vapi.ai/assistant"
     req = urllib.request.Request(
         url, data=json.dumps(config).encode(), method="PATCH" if assistant_id else "POST",
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        # Vapi sits behind Cloudflare, which rejects Python's default "Python-urllib" user agent
+        # with error 1010, so send an explicit one.
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "voice-agent-push/1.0 (+https://github.com/shajeeraza12/Voice-Agent)",
+        },
     )
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:

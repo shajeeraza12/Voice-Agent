@@ -6,8 +6,8 @@ Call a US phone number, talk to an AI intake coordinator, and get registered as 
 
 | | |
 |---|---|
-| Phone number | `TODO: +1 (xxx) xxx-xxxx` |
-| API base URL | `TODO: https://<app>.up.railway.app` |
+| Phone number | +1 (858) 399-4010 |
+| API base URL | https://voice-agent-mvx9.onrender.com |
 | API docs (Swagger) | `<API base URL>/docs` |
 | Dashboard | `<API base URL>/` (read-only list of patients and recent calls) |
 | Credentials | None needed. The API is open for review (see Security). |
@@ -62,7 +62,7 @@ Key decisions:
 | STT / TTS | Deepgram Nova-3, Vapi voice | Low latency defaults on Vapi. |
 | Backend | Python, FastAPI, Pydantic v2 | Typed validation that is shared by the API and the agent, automatic OpenAPI docs. |
 | Database | Postgres (SQLAlchemy 2, Alembic) | Survives restarts and redeploys. SQLite works for local development only, because many hosts wipe local disk. |
-| Hosting | Railway | Persistent managed Postgres, deploys from GitHub, always on (no cold starts that would time out the first tool call). |
+| Hosting | Render (app) + Neon (Postgres) | Render deploys the Dockerfile straight from GitHub. Neon is managed Postgres that persists across restarts and redeploys and resumes from idle in a few hundred milliseconds. Railway was the first choice, but it had paused new signups after a security incident, so this was the fastest reliable alternative. |
 
 ## Data model
 
@@ -147,13 +147,15 @@ pytest -q
 
 To talk to the agent against a local server, expose it with `ngrok http 8000`, set `PUBLIC_BASE_URL` to the ngrok URL and run `python scripts/push_assistant.py`.
 
-Deploying to Railway:
+Deploying (Render and Neon):
 
-1. Create a project from this GitHub repo and add a Postgres database. Railway injects `DATABASE_URL`.
-2. Set `VAPI_WEBHOOK_SECRET` in the service variables and generate a public domain.
-3. The Dockerfile runs migrations and the seed on boot.
-4. In Vapi, create a Bearer Token credential with the same secret, put its ID in `.env` as `VAPI_CREDENTIAL_ID`, set `PUBLIC_BASE_URL` to the Railway URL, and run `python scripts/push_assistant.py`.
+1. Create a Neon project and copy its direct (non-pooled) connection string.
+2. On Render, create a Web Service from this repo (Docker runtime), with environment variables `DATABASE_URL` (the Neon string) and `VAPI_WEBHOOK_SECRET`, and health check path `/health`.
+3. The Dockerfile runs migrations and the seed on boot. `/health` should report `"database": "ok", "dialect": "postgresql"`.
+4. In Vapi, create a Bearer Token credential with the same secret, put its ID in `.env` as `VAPI_CREDENTIAL_ID`, set `PUBLIC_BASE_URL` to the Render URL, and run `python scripts/push_assistant.py`.
 5. Attach the assistant to the phone number in the Vapi dashboard.
+
+Any host that runs a Dockerfile and any Postgres works the same way; nothing in the code is Render- or Neon-specific.
 
 ## Environment variables
 

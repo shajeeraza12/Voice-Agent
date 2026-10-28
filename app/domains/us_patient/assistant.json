@@ -350,7 +350,7 @@
   },
   "voice": {
     "provider": "vapi",
-    "voiceId": "Lily"
+    "voiceId": "Emma"
   },
   "transcriber": {
     "provider": "deepgram",
