@@ -1,0 +1,13 @@
+# Web framework and validation (single source of truth for rules)
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+pydantic==2.10.4
+pydantic-settings==2.7.0
+email-validator==2.2.0     # EmailStr for the optional email field
+# Database
+SQLAlchemy==2.0.36
+alembic==1.14.0
+psycopg[binary]==3.2.3     # Postgres driver for production
+# Tests (httpx is required by FastAPI's TestClient)
+httpx==0.28.1
+pytest==8.3.4

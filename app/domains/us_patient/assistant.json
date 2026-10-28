@@ -1,0 +1,373 @@
+{
+  "name": "Riverside Patient Intake",
+  "firstMessage": "Hi, thanks for calling Riverside Family Clinic. I'm Riley, the clinic's AI assistant, and I can get you registered as a new patient in just a few minutes. Could I start with your first and last name?",
+  "firstMessageMode": "assistant-speaks-first",
+  "model": {
+    "provider": "openai",
+    "model": "gpt-4.1-mini",
+    "temperature": 0.3,
+    "messages": [
+      {
+        "role": "system",
+        "content": "${PROMPT}"
+      }
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "async": false,
+        "server": {
+          "url": "${PUBLIC_BASE_URL}/channels/vapi/webhook",
+          "credentialId": "${VAPI_CREDENTIAL_ID}"
+        },
+        "function": {
+          "name": "validate_patient_details",
+          "description": "Check any of the patient's details without saving. Call right after getting the date of birth, right after getting the phone number, and with all fields before the read-back. Pass only fields you have.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "first_name": {
+                "type": "string",
+                "description": "Patient's first name, spelled exactly as the caller spelled it."
+              },
+              "last_name": {
+                "type": "string",
+                "description": "Patient's last name, spelled exactly as the caller spelled it."
+              },
+              "date_of_birth": {
+                "type": "string",
+                "description": "Date of birth as MM/DD/YYYY."
+              },
+              "sex": {
+                "type": "string",
+                "description": "One of: Male, Female, Other, Decline to Answer.",
+                "enum": [
+                  "Male",
+                  "Female",
+                  "Other",
+                  "Decline to Answer"
+                ]
+              },
+              "phone_number": {
+                "type": "string",
+                "description": "US phone number, 10 digits, e.g. 4155550142."
+              },
+              "email": {
+                "type": "string",
+                "description": "Email address, optional."
+              },
+              "address_line_1": {
+                "type": "string",
+                "description": "Street address, e.g. 742 Evergreen Terrace."
+              },
+              "address_line_2": {
+                "type": "string",
+                "description": "Apartment, suite or unit, optional."
+              },
+              "city": {
+                "type": "string",
+                "description": "City."
+              },
+              "state": {
+                "type": "string",
+                "description": "Two-letter US state code (e.g. TX) or full state name."
+              },
+              "zip_code": {
+                "type": "string",
+                "description": "5-digit ZIP or ZIP+4, e.g. 78701 or 78701-1234."
+              },
+              "insurance_provider": {
+                "type": "string",
+                "description": "Insurance company name, optional."
+              },
+              "insurance_member_id": {
+                "type": "string",
+                "description": "Insurance member or subscriber ID, letters and numbers, optional."
+              },
+              "preferred_language": {
+                "type": "string",
+                "description": "Preferred language, optional. Defaults to English."
+              },
+              "emergency_contact_name": {
+                "type": "string",
+                "description": "Emergency contact's full name, optional."
+              },
+              "emergency_contact_phone": {
+                "type": "string",
+                "description": "Emergency contact's US phone number, 10 digits, optional."
+              }
+            },
+            "required": []
+          }
+        }
+      },
+      {
+        "type": "function",
+        "async": false,
+        "server": {
+          "url": "${PUBLIC_BASE_URL}/channels/vapi/webhook",
+          "credentialId": "${VAPI_CREDENTIAL_ID}"
+        },
+        "function": {
+          "name": "lookup_patient_by_phone",
+          "description": "Check whether a patient with this phone number is already registered. Call once, right after the phone number is validated.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "phone_number": {
+                "type": "string",
+                "description": "US phone number, 10 digits, e.g. 4155550142."
+              }
+            },
+            "required": [
+              "phone_number"
+            ]
+          }
+        }
+      },
+      {
+        "type": "function",
+        "async": false,
+        "server": {
+          "url": "${PUBLIC_BASE_URL}/channels/vapi/webhook",
+          "credentialId": "${VAPI_CREDENTIAL_ID}"
+        },
+        "function": {
+          "name": "create_patient",
+          "description": "Save a new patient registration. Only call after reading everything back and getting a clear yes.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "first_name": {
+                "type": "string",
+                "description": "Patient's first name, spelled exactly as the caller spelled it."
+              },
+              "last_name": {
+                "type": "string",
+                "description": "Patient's last name, spelled exactly as the caller spelled it."
+              },
+              "date_of_birth": {
+                "type": "string",
+                "description": "Date of birth as MM/DD/YYYY."
+              },
+              "sex": {
+                "type": "string",
+                "description": "One of: Male, Female, Other, Decline to Answer.",
+                "enum": [
+                  "Male",
+                  "Female",
+                  "Other",
+                  "Decline to Answer"
+                ]
+              },
+              "phone_number": {
+                "type": "string",
+                "description": "US phone number, 10 digits, e.g. 4155550142."
+              },
+              "email": {
+                "type": "string",
+                "description": "Email address, optional."
+              },
+              "address_line_1": {
+                "type": "string",
+                "description": "Street address, e.g. 742 Evergreen Terrace."
+              },
+              "address_line_2": {
+                "type": "string",
+                "description": "Apartment, suite or unit, optional."
+              },
+              "city": {
+                "type": "string",
+                "description": "City."
+              },
+              "state": {
+                "type": "string",
+                "description": "Two-letter US state code (e.g. TX) or full state name."
+              },
+              "zip_code": {
+                "type": "string",
+                "description": "5-digit ZIP or ZIP+4, e.g. 78701 or 78701-1234."
+              },
+              "insurance_provider": {
+                "type": "string",
+                "description": "Insurance company name, optional."
+              },
+              "insurance_member_id": {
+                "type": "string",
+                "description": "Insurance member or subscriber ID, letters and numbers, optional."
+              },
+              "preferred_language": {
+                "type": "string",
+                "description": "Preferred language, optional. Defaults to English."
+              },
+              "emergency_contact_name": {
+                "type": "string",
+                "description": "Emergency contact's full name, optional."
+              },
+              "emergency_contact_phone": {
+                "type": "string",
+                "description": "Emergency contact's US phone number, 10 digits, optional."
+              },
+              "caller_confirmed": {
+                "type": "boolean",
+                "description": "true only after the caller clearly said yes to the full read-back."
+              }
+            },
+            "required": [
+              "first_name",
+              "last_name",
+              "date_of_birth",
+              "sex",
+              "phone_number",
+              "address_line_1",
+              "city",
+              "state",
+              "zip_code",
+              "caller_confirmed"
+            ]
+          }
+        },
+        "messages": [
+          {
+            "type": "request-start",
+            "content": "Okay, saving that now."
+          }
+        ]
+      },
+      {
+        "type": "function",
+        "async": false,
+        "server": {
+          "url": "${PUBLIC_BASE_URL}/channels/vapi/webhook",
+          "credentialId": "${VAPI_CREDENTIAL_ID}"
+        },
+        "function": {
+          "name": "update_patient",
+          "description": "Update an existing patient found by lookup_patient_by_phone. Pass only the fields that change.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "patient_id": {
+                "type": "string",
+                "description": "patient_id from lookup_patient_by_phone."
+              },
+              "verify_date_of_birth": {
+                "type": "string",
+                "description": "Date of birth the caller gave to verify identity, MM/DD/YYYY."
+              },
+              "first_name": {
+                "type": "string",
+                "description": "Patient's first name, spelled exactly as the caller spelled it."
+              },
+              "last_name": {
+                "type": "string",
+                "description": "Patient's last name, spelled exactly as the caller spelled it."
+              },
+              "date_of_birth": {
+                "type": "string",
+                "description": "Date of birth as MM/DD/YYYY."
+              },
+              "sex": {
+                "type": "string",
+                "description": "One of: Male, Female, Other, Decline to Answer.",
+                "enum": [
+                  "Male",
+                  "Female",
+                  "Other",
+                  "Decline to Answer"
+                ]
+              },
+              "phone_number": {
+                "type": "string",
+                "description": "US phone number, 10 digits, e.g. 4155550142."
+              },
+              "email": {
+                "type": "string",
+                "description": "Email address, optional."
+              },
+              "address_line_1": {
+                "type": "string",
+                "description": "Street address, e.g. 742 Evergreen Terrace."
+              },
+              "address_line_2": {
+                "type": "string",
+                "description": "Apartment, suite or unit, optional."
+              },
+              "city": {
+                "type": "string",
+                "description": "City."
+              },
+              "state": {
+                "type": "string",
+                "description": "Two-letter US state code (e.g. TX) or full state name."
+              },
+              "zip_code": {
+                "type": "string",
+                "description": "5-digit ZIP or ZIP+4, e.g. 78701 or 78701-1234."
+              },
+              "insurance_provider": {
+                "type": "string",
+                "description": "Insurance company name, optional."
+              },
+              "insurance_member_id": {
+                "type": "string",
+                "description": "Insurance member or subscriber ID, letters and numbers, optional."
+              },
+              "preferred_language": {
+                "type": "string",
+                "description": "Preferred language, optional. Defaults to English."
+              },
+              "emergency_contact_name": {
+                "type": "string",
+                "description": "Emergency contact's full name, optional."
+              },
+              "emergency_contact_phone": {
+                "type": "string",
+                "description": "Emergency contact's US phone number, 10 digits, optional."
+              },
+              "caller_confirmed": {
+                "type": "boolean",
+                "description": "true only after the caller clearly said yes to the full read-back."
+              }
+            },
+            "required": [
+              "patient_id",
+              "caller_confirmed"
+            ]
+          }
+        },
+        "messages": [
+          {
+            "type": "request-start",
+            "content": "Okay, updating that now."
+          }
+        ]
+      },
+      {
+        "type": "endCall"
+      }
+    ]
+  },
+  "voice": {
+    "provider": "vapi",
+    "voiceId": "Lily"
+  },
+  "transcriber": {
+    "provider": "deepgram",
+    "model": "nova-3",
+    "language": "en"
+  },
+  "server": {
+    "url": "${PUBLIC_BASE_URL}/channels/vapi/webhook",
+    "credentialId": "${VAPI_CREDENTIAL_ID}"
+  },
+  "serverMessages": [
+    "tool-calls",
+    "status-update",
+    "end-of-call-report"
+  ],
+  "endCallMessage": "Goodbye, and take care.",
+  "silenceTimeoutSeconds": 30,
+  "maxDurationSeconds": 900,
+  "backgroundDenoisingEnabled": true
+}
