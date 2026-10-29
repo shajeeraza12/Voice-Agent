@@ -129,7 +129,7 @@ Dates are accepted as MM/DD/YYYY (the spec's format) or ISO, and returned as ISO
 Prompt design notes:
 
 - Short turns, one question at a time, no lists or formatting, numbers spoken in groups, names and emails spelled back letter by letter.
-- The phone number is collected early, so the returning-patient check happens before the caller spends time on an address. The caller-ID number is offered only when it is a US (+1) number; web test calls have no caller ID and international numbers would fail validation.
+- The phone number is collected early, so the returning-patient check happens before the caller spends time on an address. The lookup runs the moment a phone number is known, even if the caller gives it in their first sentence. The agent always asks for the number rather than offering caller ID: browser test calls have none, international numbers fail validation, and the model applied a conditional offer unreliably.
 - Date of birth, phone, state and ZIP are validated the moment they are given, so the caller is re-asked immediately instead of after the read-back.
 - Every spelling is read back letter by letter and confirmed before moving on. If a "spelling" comes through with digits or whole words (a speech recognition error), the agent asks again rather than guessing, and after two failures asks for "R as in Robert" style spelling.
 - The closing line "You're all set, [first name]" must be spoken before the end-call tool runs, in a separate turn. Early testing showed the model calling save and hang-up together, so the caller never heard the confirmation.
@@ -153,7 +153,7 @@ Prompt design notes:
 | Returning caller | Lookup by phone, offer to update, verify date of birth first |
 | Family sharing a phone | Phone is not unique; the agent asks which person if several match |
 | Misheard spelling | Read back letter by letter; garbled spellings are re-asked, not guessed |
-| Caller ID missing or non-US | Agent asks for the number instead of offering caller ID |
+| Caller ID missing or non-US | Not relevant: the agent always asks for the number |
 | Caller goes silent | Agent checks in once ("Are you still there?") |
 
 ## Project structure
@@ -241,12 +241,13 @@ Manual, on live calls (browser calls through Vapi, each checked afterwards in th
 | City and state given before the street | Agent kept them and asked only for the street |
 | Invalid phone number | Rejected with the reason and asked again for just the phone |
 | Invalid ZIP (4 digits heard) | Rejected and asked again for just the ZIP |
+| Returning caller (seed patient's phone) | Agent said "It looks like we already have a record for Jane Doe. Would you like to update your information instead?" |
 | Hang up mid-call | No record created; call logged as `ended_without_save` with transcript |
 | Data persists across a redeploy | Same patient IDs and timestamps after a manual redeploy |
 
-Implemented but not yet exercised on a live call: future date of birth, spoken spelling correction mid-read-back, interruption, start over, returning caller update, insurance and emergency contact opt-in, and database failure. The tool-level parts of these (date validation, idempotent save, DOB verification, spoken error on database failure) are covered by the automated tests above.
+Implemented but not yet exercised on a live call: future date of birth, spoken spelling correction mid-read-back, interruption, start over, completing a returning-caller update, insurance and emergency contact opt-in, and database failure. The tool-level parts of these (date validation, idempotent save, DOB verification, spoken error on database failure) are covered by the automated tests above.
 
-Issues found in live testing and fixed: the agent cut callers off mid-name (longer end-of-speech detection), accepted a misheard spelling (mandatory letter-by-letter confirmation), offered caller ID on calls that had none (US numbers only), and hung up before saying "You're all set" (closing line must be spoken in a separate turn before ending).
+Issues found in live testing and fixed: the agent cut callers off mid-name (longer end-of-speech detection), accepted a misheard spelling (mandatory letter-by-letter confirmation), offered caller ID on calls that had none (US numbers only), hung up before saying "You're all set" (closing line must be spoken in a separate turn before ending), and ran the returning-patient lookup late when the phone number was given early (lookup now runs as soon as a number is known).
 
 ## Observability
 
