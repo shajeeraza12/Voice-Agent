@@ -114,7 +114,8 @@ def create_patient(args: dict, ctx: ToolContext) -> ToolResult:
     verb = "saved" if created else "updated (same call, no duplicate created)"
     return ToolResult(
         f"SAVED: registration {verb}. patient_id={patient_id}. "
-        f"Tell the caller: \"You're all set, {data.first_name}.\" Then say goodbye and end the call.",
+        f"Now say to the caller: \"You're all set, {data.first_name}.\" plus one short warm sentence. "
+        "Only after saying it, end the call in a separate step. Do not say goodbye yourself; the system does.",
         payload=data.model_dump(mode="json"),
         record_id=patient_id,
         saved=True,
@@ -157,7 +158,8 @@ def update_patient(args: dict, ctx: ToolContext) -> ToolResult:
 
     return ToolResult(
         f"SAVED: updated {', '.join(changes)}. patient_id={patient_id}. "
-        f"Tell the caller: \"You're all set, {first_name}.\" Then say goodbye and end the call.",
+        f"Now say to the caller: \"You're all set, {first_name}.\" "
+        "Only after saying it, end the call in a separate step. Do not say goodbye yourself; the system does.",
         payload={"patient_id": str(patient_id), **data.model_dump(mode="json", exclude_unset=True)},
         record_id=str(patient_id),
         saved=True,

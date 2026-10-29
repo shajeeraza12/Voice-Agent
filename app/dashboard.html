@@ -5,56 +5,144 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Patient Registry</title>
 <style>
-  body { font-family: system-ui, sans-serif; margin: 24px; color: #111; background: #fff; }
+  :root { --fg:#111; --muted:#666; --line:#ddd; --bg:#fff; --soft:#f5f5f5; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, Segoe UI, sans-serif; margin: 0; color: var(--fg); background: var(--bg); }
+  header { padding: 20px 24px 12px; border-bottom: 1px solid var(--line); }
   h1 { font-size: 20px; margin: 0 0 4px; }
-  h2 { font-size: 16px; margin: 28px 0 8px; }
-  p.note { color: #555; margin: 0 0 16px; font-size: 14px; }
-  .wrap { overflow-x: auto; }
+  h2 { font-size: 16px; margin: 0 0 10px; }
+  main { padding: 16px 24px 40px; max-width: 1400px; }
+  p.note { color: var(--muted); margin: 0; font-size: 14px; }
+  p.note a { color: inherit; }
+  .stats { display: flex; gap: 12px; flex-wrap: wrap; margin: 16px 0 24px; }
+  .stat { border: 1px solid var(--line); border-radius: 6px; padding: 10px 14px; min-width: 150px; }
+  .stat b { display: block; font-size: 22px; }
+  .stat span { color: var(--muted); font-size: 13px; }
+  .bar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  input[type=search] { font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 4px; min-width: 260px; }
+  button { font: inherit; padding: 5px 12px; border: 1px solid #999; background: var(--bg); border-radius: 4px; cursor: pointer; }
+  section { margin-bottom: 32px; }
+  .wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; }
   table { border-collapse: collapse; width: 100%; font-size: 13px; }
-  th, td { border-bottom: 1px solid #ddd; padding: 6px 8px; text-align: left; vertical-align: top; white-space: nowrap; }
-  th { background: #f4f4f4; }
-  td.wrap-text { white-space: normal; min-width: 260px; }
-  button { font: inherit; padding: 4px 10px; }
-  .muted { color: #777; }
+  th, td { border-bottom: 1px solid var(--line); padding: 7px 9px; text-align: left; vertical-align: top; white-space: nowrap; }
+  th { background: var(--soft); position: sticky; top: 0; }
+  tr.click { cursor: pointer; }
+  tr.click:hover td { background: var(--soft); }
+  td.wrap-text { white-space: normal; min-width: 280px; }
+  .muted { color: var(--muted); }
+  .tag { border: 1px solid #999; border-radius: 10px; padding: 1px 8px; font-size: 12px; }
+  .tag.saved { border-color: #111; font-weight: 600; }
+  dialog { width: min(820px, 94vw); border: 1px solid #999; border-radius: 8px; padding: 0; }
+  dialog header { display: flex; justify-content: space-between; align-items: center; }
+  dialog .body { padding: 16px 24px 24px; max-height: 70vh; overflow-y: auto; }
+  dl { display: grid; grid-template-columns: 140px 1fr; gap: 4px 12px; font-size: 14px; margin: 0 0 16px; }
+  dt { color: var(--muted); }
+  pre { white-space: pre-wrap; font: 13px/1.5 ui-monospace, Consolas, monospace; background: var(--soft); padding: 12px; border-radius: 6px; margin: 0; }
+  .line-ai { color: var(--fg); }
+  .line-user { color: #000; font-weight: 600; }
 </style>
 </head>
 <body>
-<h1>Patient Registry</h1>
-<p class="note">Read-only view of the REST API. Refreshes every 10 seconds. API docs at <a href="/docs">/docs</a>.</p>
-<button onclick="load()">Refresh</button>
+<header>
+  <h1>Patient Registry</h1>
+  <p class="note">Live view of the database behind the voice agent. Call <b>+1 (858) 399-4010</b> to register a patient; it appears here within seconds.
+    Read-only. REST API docs at <a href="/docs">/docs</a>. Refreshes every 10 seconds.</p>
+</header>
+<main>
+  <div class="stats">
+    <div class="stat"><b id="s-patients">-</b><span>patients registered</span></div>
+    <div class="stat"><b id="s-calls">-</b><span>calls logged</span></div>
+    <div class="stat"><b id="s-saved">-</b><span>calls that saved a record</span></div>
+    <div class="stat"><b id="s-updated">-</b><span>last refreshed</span></div>
+  </div>
 
-<h2>Patients</h2>
-<div class="wrap"><table id="patients"><thead><tr>
-  <th>Name</th><th>DOB</th><th>Sex</th><th>Phone</th><th>Email</th><th>Address</th>
-  <th>Insurance</th><th>Language</th><th>Emergency contact</th><th>Created (UTC)</th><th>ID</th>
-</tr></thead><tbody></tbody></table></div>
+  <section>
+    <h2>Patients</h2>
+    <div class="bar">
+      <input type="search" id="q" placeholder="Search name, phone, city..." oninput="renderPatients()">
+      <button onclick="load()">Refresh</button>
+    </div>
+    <div class="wrap"><table id="patients"><thead><tr>
+      <th>Name</th><th>DOB</th><th>Sex</th><th>Phone</th><th>Email</th><th>Address</th>
+      <th>Insurance</th><th>Language</th><th>Emergency contact</th><th>Registered (UTC)</th>
+    </tr></thead><tbody></tbody></table></div>
+  </section>
 
-<h2>Recent calls</h2>
-<div class="wrap"><table id="calls"><thead><tr>
-  <th>When (UTC)</th><th>Status</th><th>Caller</th><th>Ended</th><th>Summary</th><th>Patient ID</th>
-</tr></thead><tbody></tbody></table></div>
+  <section>
+    <h2>Recent calls</h2>
+    <p class="note" style="margin-bottom:10px">Click a call to read its transcript and the data the caller confirmed.</p>
+    <div class="wrap"><table id="calls"><thead><tr>
+      <th>When (UTC)</th><th>Status</th><th>Patient</th><th>Caller</th><th>Ended</th><th>Summary</th>
+    </tr></thead><tbody></tbody></table></div>
+  </section>
+</main>
+
+<dialog id="detail">
+  <header><h2 id="d-title">Call</h2><button onclick="document.getElementById('detail').close()">Close</button></header>
+  <div class="body" id="d-body"></div>
+</dialog>
 
 <script>
 const esc = s => (s ?? "").toString().replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const phone = p => p ? `${p.slice(0,3)}-${p.slice(3,6)}-${p.slice(6)}` : "";
+const when = t => esc((t || "").replace("T", " ").slice(0, 19));
+let patients = [], calls = [];
+
+function patientName(id) {
+  const p = patients.find(x => x.patient_id === id);
+  return p ? `${p.first_name} ${p.last_name}` : (id ? id.slice(0, 8) + "..." : "");
+}
+
+function renderPatients() {
+  const q = document.getElementById("q").value.trim().toLowerCase();
+  const digits = q.replace(/\D/g, "");
+  const rows = patients.filter(x => !q ||
+    `${x.first_name} ${x.last_name} ${x.city} ${x.state} ${x.email || ""}`.toLowerCase().includes(q) ||
+    (digits.length >= 3 && x.phone_number.includes(digits)));
+  document.querySelector("#patients tbody").innerHTML = rows.map(x => `<tr>
+    <td><b>${esc(x.first_name)} ${esc(x.last_name)}</b></td><td>${esc(x.date_of_birth)}</td><td>${esc(x.sex)}</td>
+    <td>${phone(x.phone_number)}</td><td>${esc(x.email)}</td>
+    <td>${esc(x.address_line_1)}${x.address_line_2 ? ", " + esc(x.address_line_2) : ""}, ${esc(x.city)}, ${esc(x.state)} ${esc(x.zip_code)}</td>
+    <td>${esc(x.insurance_provider)} <span class="muted">${esc(x.insurance_member_id)}</span></td><td>${esc(x.preferred_language)}</td>
+    <td>${esc(x.emergency_contact_name)} <span class="muted">${phone(x.emergency_contact_phone)}</span></td>
+    <td class="muted">${when(x.created_at)}</td></tr>`).join("")
+    || `<tr><td colspan="10" class="muted">${q ? "No matches." : "No patients yet."}</td></tr>`;
+}
+
+function renderCalls() {
+  document.querySelector("#calls tbody").innerHTML = calls.map((x, i) => `<tr class="click" onclick="showCall(${i})">
+    <td>${when(x.created_at)}</td><td><span class="tag ${x.status === "saved" ? "saved" : ""}">${esc(x.status)}</span></td>
+    <td>${esc(patientName(x.record_id))}</td><td>${esc(x.caller_number || "web call")}</td>
+    <td class="muted">${esc(x.ended_reason)}</td><td class="wrap-text">${esc(x.summary)}</td></tr>`).join("")
+    || `<tr><td colspan="6" class="muted">No calls yet.</td></tr>`;
+}
+
+function showCall(i) {
+  const c = calls[i];
+  document.getElementById("d-title").textContent = `Call ${when(c.created_at)} UTC`;
+  const transcript = (c.transcript || "No transcript received.").split("\n").map(l =>
+    `<span class="${l.startsWith("User:") ? "line-user" : "line-ai"}">${esc(l)}</span>`).join("\n");
+  document.getElementById("d-body").innerHTML = `
+    <dl><dt>Status</dt><dd>${esc(c.status)}</dd><dt>Patient</dt><dd>${esc(patientName(c.record_id)) || "none"}</dd>
+    <dt>Caller</dt><dd>${esc(c.caller_number || "web call")}</dd><dt>Ended</dt><dd>${esc(c.ended_reason)}</dd>
+    <dt>Summary</dt><dd>${esc(c.summary)}</dd><dt>Call ID</dt><dd class="muted">${esc(c.call_id)}</dd></dl>
+    <h2>Transcript</h2><pre>${transcript}</pre>
+    ${c.final_payload ? `<h2 style="margin-top:16px">Confirmed data sent to the API</h2><pre>${esc(JSON.stringify(c.final_payload, null, 2))}</pre>` : ""}`;
+  document.getElementById("detail").showModal();
+}
+
 async function load() {
   try {
-    const [p, c] = await Promise.all([fetch("/patients").then(r => r.json()), fetch("/calls?limit=20").then(r => r.json())]);
-    document.querySelector("#patients tbody").innerHTML = (p.data || []).map(x => `<tr>
-      <td>${esc(x.first_name)} ${esc(x.last_name)}</td><td>${esc(x.date_of_birth)}</td><td>${esc(x.sex)}</td>
-      <td>${phone(x.phone_number)}</td><td>${esc(x.email)}</td>
-      <td>${esc(x.address_line_1)}${x.address_line_2 ? ", " + esc(x.address_line_2) : ""}, ${esc(x.city)}, ${esc(x.state)} ${esc(x.zip_code)}</td>
-      <td>${esc(x.insurance_provider)} ${esc(x.insurance_member_id)}</td><td>${esc(x.preferred_language)}</td>
-      <td>${esc(x.emergency_contact_name)} ${phone(x.emergency_contact_phone)}</td>
-      <td>${esc((x.created_at || "").slice(0,19))}</td><td class="muted">${esc(x.patient_id)}</td></tr>`).join("")
-      || `<tr><td colspan="11" class="muted">No patients yet.</td></tr>`;
-    document.querySelector("#calls tbody").innerHTML = (c.data || []).map(x => `<tr>
-      <td>${esc((x.created_at || "").slice(0,19))}</td><td>${esc(x.status)}</td><td>${esc(x.caller_number)}</td>
-      <td>${esc(x.ended_reason)}</td><td class="wrap-text">${esc(x.summary)}</td><td class="muted">${esc(x.record_id)}</td></tr>`).join("")
-      || `<tr><td colspan="6" class="muted">No calls yet.</td></tr>`;
+    const [p, c] = await Promise.all([fetch("/patients").then(r => r.json()), fetch("/calls?limit=50").then(r => r.json())]);
+    patients = p.data || []; calls = c.data || [];
+    document.getElementById("s-patients").textContent = patients.length;
+    document.getElementById("s-calls").textContent = calls.length;
+    document.getElementById("s-saved").textContent = calls.filter(x => x.status === "saved").length;
+    document.getElementById("s-updated").textContent = new Date().toLocaleTimeString();
+    renderPatients(); renderCalls();
   } catch (e) { console.error(e); }
 }
-load(); setInterval(load, 10000);
+load(); setInterval(() => { if (!document.getElementById("detail").open) load(); }, 10000);
 </script>
 </body>
 </html>
