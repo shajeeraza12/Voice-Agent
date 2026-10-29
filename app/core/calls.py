@@ -67,8 +67,21 @@ def finish_call(call_id: str, **fields) -> None:
             call = upsert_call(session, call_id, **fields)
             if call.status in (CallStatus.IN_PROGRESS, None):
                 call.status = CallStatus.ENDED_WITHOUT_SAVE
+            if not call.summary:
+                # The voice platform doesn't always send its own summary, so write a factual one.
+                call.summary = _fallback_summary(call)
     except Exception as exc:
         log_event("call_log_write_failed", level=logging.ERROR, call_id=call_id, error=repr(exc))
+
+
+def _fallback_summary(call: Call) -> str:
+    reason = call.ended_reason or "unknown reason"
+    turns = (call.transcript or "").count("\nUser:") + (1 if (call.transcript or "").startswith("User:") else 0)
+    if call.status == CallStatus.SAVED:
+        return f"Record {call.record_id} saved. Call ended ({reason})."
+    if call.status == CallStatus.SAVE_FAILED:
+        return f"Save failed; collected data is in final_payload. Call ended ({reason})."
+    return f"Ended without saving a record after {turns} caller turns ({reason})."
 
 
 def calls_for_record(session: Session, record_id: str) -> list[Call]:

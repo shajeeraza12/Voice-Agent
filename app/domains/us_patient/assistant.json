@@ -1,6 +1,6 @@
 {
   "name": "Riverside Patient Intake",
-  "firstMessage": "Hi, thanks for calling Riverside Family Clinic. I'm Riley, the clinic's AI assistant, and I can get you registered as a new patient in just a few minutes. Could I start with your first and last name?",
+  "firstMessage": "Hi, thanks for calling Riverside Family Clinic. This is Riley, the clinic's AI assistant. I can get you registered as a new patient. What's your first and last name?",
   "firstMessageMode": "assistant-speaks-first",
   "model": {
     "provider": "openai",
@@ -369,5 +369,17 @@
   "endCallMessage": "Goodbye, and take care.",
   "silenceTimeoutSeconds": 30,
   "maxDurationSeconds": 900,
-  "backgroundDenoisingEnabled": true
+  "backgroundDenoisingEnabled": true,
+  "startSpeakingPlan": {
+    "waitSeconds": 0.6,
+    "smartEndpointingPlan": {
+      "provider": "livekit",
+      "waitFunction": "200 + 8000 * x"
+    }
+  },
+  "stopSpeakingPlan": {
+    "numWords": 2,
+    "voiceSeconds": 0.3,
+    "backoffSeconds": 1
+  }
 }

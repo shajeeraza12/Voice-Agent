@@ -87,3 +87,12 @@ def test_custom_webhook_token_header(client, monkeypatch):
     assert client.post("/channels/vapi/webhook", json=msg, headers={"X-Vapi-Secret": ""}).status_code == 401
     assert client.post("/channels/vapi/webhook", json=msg,
                        headers={"X-Vapi-Secret": "", "X-Webhook-Token": "s3cret"}).status_code == 200
+
+
+def test_summary_written_when_vapi_sends_none(client):
+    client.post("/channels/vapi/webhook", json={"message": {
+        "type": "end-of-call-report", "endedReason": "customer-ended-call", "call": {"id": "no-summary"},
+        "artifact": {"transcript": "AI: Hi\nUser: Andrew\nAI: Spell it?\nUser: bye"}, "analysis": {"summary": ""}}})
+    with SessionLocal() as s:
+        call = s.get(Call, "no-summary")
+        assert call.summary == "Ended without saving a record after 2 caller turns (customer-ended-call)."

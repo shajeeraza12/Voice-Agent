@@ -123,9 +123,9 @@ def _check_phone(v: str) -> str:
         raise ValueError(f"needs to be 10 digits, and I got {len(v)}")
     # North American Numbering Plan: area code and exchange cannot start with 0 or 1.
     if v[0] in "01":
-        raise ValueError("has an area code that can't start with 0 or 1")
+        raise ValueError("doesn't look like a valid US number, because the area code can't start with 0 or 1")
     if v[3] in "01":
-        raise ValueError("has a middle three digits that can't start with 0 or 1")
+        raise ValueError("doesn't look like a valid US number, because the middle three digits can't start with 0 or 1")
     return v
 
 
