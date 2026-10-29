@@ -129,7 +129,7 @@ Dates are accepted as MM/DD/YYYY (the spec's format) or ISO, and returned as ISO
 Prompt design notes:
 
 - Short turns, one question at a time, no lists or formatting, numbers spoken in groups, names and emails spelled back letter by letter.
-- The phone number is collected early, so the returning-patient check happens before the caller spends time on an address. The lookup runs the moment a phone number is known, even if the caller gives it in their first sentence. The agent always asks for the number rather than offering caller ID: browser test calls have none, international numbers fail validation, and the model applied a conditional offer unreliably.
+- The phone number is collected early, so the returning-patient check happens before the caller spends time on an address. The returning-patient check is enforced in the backend rather than left to the model: `validate_patient_details` reports MATCH whenever it checks a known phone number, and `create_patient` refuses to create a second record for that number unless the caller said the existing record is someone else (`confirmed_new_patient`). In live testing the model sometimes skipped a separate lookup when the number was given early, and repeated a phrase the prompt told it never to say, so these rules moved into code. The agent simply asks for the phone number; it does not offer caller ID.
 - Date of birth, phone, state and ZIP are validated the moment they are given, so the caller is re-asked immediately instead of after the read-back.
 - Every spelling is read back letter by letter and confirmed before moving on. If a "spelling" comes through with digits or whole words (a speech recognition error), the agent asks again rather than guessing, and after two failures asks for "R as in Robert" style spelling.
 - The closing line "You're all set, [first name]" must be spoken before the end-call tool runs, in a separate turn. Early testing showed the model calling save and hang-up together, so the caller never heard the confirmation.
@@ -151,7 +151,8 @@ Prompt design notes:
 | Repeated or retried save in one call | Idempotent by call ID, no duplicate |
 | Database down during save | Agent apologises out loud and says nothing was saved; payload logged to stdout; call marked `save_failed` |
 | Returning caller | Lookup by phone, offer to update, verify date of birth first |
-| Family sharing a phone | Phone is not unique; the agent asks which person if several match |
+| Family sharing a phone | Phone is not unique; a second person can register on the same number once they confirm they are not the existing patient |
+| Duplicate registration | `create_patient` refuses a new record for a known phone number and returns the update offer instead |
 | Misheard spelling | Read back letter by letter; garbled spellings are re-asked, not guessed |
 | Caller ID missing or non-US | Not relevant: the agent always asks for the number |
 | Caller goes silent | Agent checks in once ("Are you still there?") |
@@ -224,11 +225,11 @@ Any host that runs a Dockerfile and any Postgres works the same way; nothing in 
 
 ## Testing
 
-Automated (`pytest -q`, 73 tests, run against SQLite):
+Automated (`pytest -q`, 75 tests, run against SQLite):
 
 - Validators: every field rule, including normalisation (phone formats, state names, ZIP+4, sex synonyms) and rejections (future DOB, invalid NANP numbers, unknown fields, control characters).
 - API: status codes, envelope, filters, partial update, soft delete.
-- Tools: confirmation gate, field-level error messages, idempotent save per call, returning-caller lookup, DOB verification for updates, and a simulated database failure that must produce a spoken apology.
+- Tools: confirmation gate, field-level error messages, idempotent save per call, returning-caller lookup, duplicate guard on save, DOB verification for updates, and a simulated database failure that must produce a spoken apology.
 - Vapi webhook: both tool-call payload shapes, all three auth headers, call lifecycle and transcript storage, fallback summary.
 - Architecture: `core/`, `channels/` and `db/` never import a domain.
 
@@ -247,7 +248,7 @@ Manual, on live calls (browser calls through Vapi, each checked afterwards in th
 
 Implemented but not yet exercised on a live call: future date of birth, spoken spelling correction mid-read-back, interruption, start over, completing a returning-caller update, insurance and emergency contact opt-in, and database failure. The tool-level parts of these (date validation, idempotent save, DOB verification, spoken error on database failure) are covered by the automated tests above.
 
-Issues found in live testing and fixed: the agent cut callers off mid-name (longer end-of-speech detection), accepted a misheard spelling (mandatory letter-by-letter confirmation), offered caller ID on calls that had none (US numbers only), hung up before saying "You're all set" (closing line must be spoken in a separate turn before ending), and ran the returning-patient lookup late when the phone number was given early (lookup now runs as soon as a number is known).
+Issues found in live testing and fixed: the agent cut callers off mid-name (longer end-of-speech detection), accepted a misheard spelling (mandatory letter-by-letter confirmation), offered caller ID on calls that had none (US numbers only), hung up before saying "You're all set" (closing line must be spoken in a separate turn before ending), and ran the returning-patient lookup late when the phone number was given early (the check now runs inside phone validation and the save tool, so it cannot be skipped).
 
 ## Observability
 

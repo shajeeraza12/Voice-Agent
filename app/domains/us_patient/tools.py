@@ -43,8 +43,33 @@ def _fields(args: dict) -> dict:
 
 
 def _confirmed(args: dict) -> bool:
-    value = args.get("caller_confirmed")
+    return _flag(args, "caller_confirmed")
+
+
+def _flag(args: dict, key: str) -> bool:
+    value = args.get(key)
     return value is True or (isinstance(value, str) and value.strip().lower() == "true")
+
+
+def _existing_patients(session, phone: str, ctx: ToolContext) -> list:
+    """Active patients with this phone, excluding one created earlier in this same call."""
+    return [p for p in service.find_by_phone(session, phone) if not (ctx.call_id and p.source_call_id == ctx.call_id)]
+
+
+def _match_message(matches: list) -> str:
+    p = matches[0]
+    others = ""
+    if len(matches) > 1:
+        names = ", ".join(f"{m.first_name} {m.last_name}" for m in matches[1:])
+        others = f" Other patients also share this number: {names}. Ask which person is calling if unclear."
+    return (
+        f"MATCH: patient_id={p.patient_id}; name={p.first_name} {p.last_name}.{others} "
+        f"Before collecting anything else, ask: 'It looks like we already have a record for {p.first_name} {p.last_name}. "
+        "Would you like to update your information instead?' "
+        "If yes, ask for their date of birth to verify before changing anything. "
+        "If they say that record is someone else (for example a family member sharing the phone), continue the new "
+        "registration and pass confirmed_new_patient=true to create_patient. Do not read out any other stored details."
+    )
 
 
 def _readable(values: dict) -> str:
@@ -72,7 +97,15 @@ def validate_patient_details(args: dict, ctx: ToolContext) -> ToolResult:
     if not fields:
         return ToolResult("VALID: no fields were provided to check.")
     data = PatientUpdate.model_validate(fields)  # partial: validates only what was given
-    return ToolResult(f"VALID: {_readable(data.changes())}")
+    result = f"VALID: {_readable(data.changes())}"
+    # The returning-patient check runs here too, deterministically, whenever a valid phone number is checked.
+    # In live testing the model often skipped a separate lookup when the caller gave their number early.
+    if data.phone_number:
+        with session_scope() as session:
+            matches = _existing_patients(session, data.phone_number, ctx)
+            if matches:
+                return ToolResult(f"{result}. {_match_message(matches)}", extra={"patient_id": str(matches[0].patient_id)})
+    return ToolResult(result)
 
 
 def lookup_patient_by_phone(args: dict, ctx: ToolContext) -> ToolResult:
@@ -81,22 +114,10 @@ def lookup_patient_by_phone(args: dict, ctx: ToolContext) -> ToolResult:
         return ToolResult("NO_MATCH: no phone number to look up. Continue with a new registration.")
     phone = _PhoneOnly.model_validate({"phone_number": raw}).phone_number
     with session_scope() as session:
-        matches = service.find_by_phone(session, phone)
+        matches = _existing_patients(session, phone, ctx)
         if not matches:
             return ToolResult("NO_MATCH: no existing patient with this phone number. Continue with a new registration.")
-        p = matches[0]
-        others = ""
-        if len(matches) > 1:
-            names = ", ".join(f"{m.first_name} {m.last_name}" for m in matches[1:])
-            others = f" Other patients also share this number: {names}. Ask which person is calling if unclear."
-        return ToolResult(
-            f"MATCH: patient_id={p.patient_id}; name={p.first_name} {p.last_name}.{others} "
-            f"Ask: 'It looks like we already have a record for {p.first_name} {p.last_name}. "
-            "Would you like to update your information instead?' "
-            "If yes, ask for their date of birth to verify before changing anything. "
-            "Do not read out any other stored details.",
-            extra={"patient_id": str(p.patient_id)},
-        )
+        return ToolResult(_match_message(matches), extra={"patient_id": str(matches[0].patient_id)})
 
 
 def create_patient(args: dict, ctx: ToolContext) -> ToolResult:
@@ -109,6 +130,13 @@ def create_patient(args: dict, ctx: ToolContext) -> ToolResult:
         )
     data = PatientCreate.model_validate(fields)
     with session_scope() as session:
+        # Duplicate guard: never silently create a second record for a phone number we already have,
+        # unless the caller said the existing record is a different person.
+        if not _flag(args, "confirmed_new_patient"):
+            matches = _existing_patients(session, data.phone_number, ctx)
+            if matches:
+                return ToolResult("NOT_SAVED: " + _match_message(matches), ok=False,
+                                  extra={"patient_id": str(matches[0].patient_id)})
         patient, created = service.create_patient(session, data, source_call_id=ctx.call_id)
         patient_id = str(patient.patient_id)
     verb = "saved" if created else "updated (same call, no duplicate created)"

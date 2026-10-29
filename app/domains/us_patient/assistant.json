@@ -22,7 +22,7 @@
         },
         "function": {
           "name": "validate_patient_details",
-          "description": "Check any of the patient's details without saving. Call right after getting the date of birth, right after getting the phone number, and with all fields before the read-back. Pass only fields you have.",
+          "description": "Check any of the patient's details without saving. When a phone number is included it also checks whether that number belongs to an existing patient and returns MATCH if so. Call right after getting the date of birth, right after getting the phone number (even if given in the first sentence), and with all fields before the read-back.",
           "parameters": {
             "type": "object",
             "properties": {
@@ -211,6 +211,10 @@
               "caller_confirmed": {
                 "type": "boolean",
                 "description": "true only after the caller clearly said yes to the full read-back."
+              },
+              "confirmed_new_patient": {
+                "type": "boolean",
+                "description": "true only if a record already exists for this phone number and the caller said it belongs to someone else."
               }
             },
             "required": [

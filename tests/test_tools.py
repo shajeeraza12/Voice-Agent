@@ -90,3 +90,20 @@ def test_database_failure_is_spoken_not_silent(valid_patient, monkeypatch):
 
 def test_unknown_tool():
     assert dispatch("drop_tables", {}, ctx()).message.startswith("ERROR")
+
+
+def test_validate_phone_reports_existing_patient(valid_patient):
+    dispatch("create_patient", {**valid_patient, "caller_confirmed": True}, ctx("first"))
+    r = dispatch("validate_patient_details", {"phone_number": "415 555 0142"}, ctx("second"))
+    assert r.message.startswith("VALID") and "MATCH" in r.message and "Jane Doe" in r.message
+    # Within the call that created the record, it is not reported as a returning patient.
+    assert "MATCH" not in dispatch("validate_patient_details", {"phone_number": "4155550142"}, ctx("first")).message
+
+
+def test_create_refuses_duplicate_phone_unless_confirmed_new(valid_patient):
+    dispatch("create_patient", {**valid_patient, "caller_confirmed": True}, ctx("first"))
+    sibling = {**valid_patient, "first_name": "June", "caller_confirmed": True}
+    blocked = dispatch("create_patient", sibling, ctx("second"))
+    assert blocked.message.startswith("NOT_SAVED: MATCH") and count_patients() == 1
+    allowed = dispatch("create_patient", {**sibling, "confirmed_new_patient": True}, ctx("second"))
+    assert allowed.message.startswith("SAVED") and count_patients() == 2
