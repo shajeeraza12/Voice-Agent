@@ -29,15 +29,20 @@ def _matches(candidate: str | None, expected: str) -> bool:
 
 
 def _check_secret(request: Request, message_kind: str) -> None:
-    """Accept the request if either supported header carries the shared secret:
-    'Authorization: Bearer <secret>' (Vapi Bearer credential) or 'X-Vapi-Secret: <secret>' (legacy)."""
+    """Accept the request if any supported header carries the shared secret:
+    - 'Authorization: Bearer <secret>'  Vapi Bearer credential. Vapi attaches it to tool calls.
+    - 'X-Webhook-Token: <secret>'       custom header set in the assistant's server.headers.
+      Needed because Vapi sends assistant-level messages (status-update, end-of-call-report)
+      without the credential, only an empty X-Vapi-Secret header (seen in production logs).
+    - 'X-Vapi-Secret: <secret>'         legacy inline secret."""
     expected = settings.vapi_webhook_secret
     if not expected:
         return  # local development only; README says to always set it in production
     authorization = request.headers.get("authorization") or ""
     bearer = authorization[7:] if authorization.lower().startswith("bearer ") else None
     x_vapi_secret = request.headers.get("x-vapi-secret")
-    if _matches(bearer, expected) or _matches(x_vapi_secret, expected):
+    x_webhook_token = request.headers.get("x-webhook-token")
+    if _matches(bearer, expected) or _matches(x_webhook_token, expected) or _matches(x_vapi_secret, expected):
         return
     # Diagnostics without leaking secrets: which headers arrived and how long the tokens were.
     log_event(

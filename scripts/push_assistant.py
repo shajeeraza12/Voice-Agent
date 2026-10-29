@@ -7,7 +7,8 @@ Usage:
   python scripts/push_assistant.py            # create (first time) or update if VAPI_ASSISTANT_ID is set
   python scripts/push_assistant.py --dry-run  # print the final JSON without sending it
 
-Needs in .env or the environment: VAPI_API_KEY, PUBLIC_BASE_URL, VAPI_CREDENTIAL_ID, optional VAPI_ASSISTANT_ID.
+Needs in .env or the environment: VAPI_API_KEY, PUBLIC_BASE_URL, VAPI_WEBHOOK_SECRET (same value as on the server),
+VAPI_CREDENTIAL_ID, and optional VAPI_ASSISTANT_ID.
 """
 import json
 import os
@@ -30,7 +31,7 @@ def load_env() -> None:
                 os.environ.setdefault(key.strip(), value.strip())
 
 
-def build() -> dict:
+def build(mask_secret: bool = False) -> dict:
     prompt = (DOMAIN / "prompt.md").read_text(encoding="utf-8")
     prompt = re.sub(r"<!--.*?-->\n?", "", prompt, flags=re.S)       # comments are for humans
     prompt = re.sub(r"\n{3,}", "\n\n", prompt).strip()
@@ -42,6 +43,12 @@ def build() -> dict:
     config = json.loads(raw)
     config["model"]["messages"][0]["content"] = prompt
     credential = os.environ.get("VAPI_CREDENTIAL_ID", "")
+    # Vapi attaches the credential to tool calls but not to assistant-level messages
+    # (status-update, end-of-call-report), so the secret also goes in a custom header.
+    secret = os.environ.get("VAPI_WEBHOOK_SECRET", "")
+    if not secret:
+        sys.exit("VAPI_WEBHOOK_SECRET is not set in .env. Copy it from the server's environment (Render).")
+    header_value = "***" if mask_secret else secret
 
     def fix_server(obj):
         if isinstance(obj, dict):
@@ -50,6 +57,8 @@ def build() -> dict:
                     obj["credentialId"] = credential
                 else:
                     obj.pop("credentialId")
+            if str(obj.get("url", "")).endswith("/channels/vapi/webhook"):
+                obj["headers"] = {"X-Webhook-Token": header_value}
             for v in obj.values():
                 fix_server(v)
         elif isinstance(obj, list):
@@ -58,14 +67,15 @@ def build() -> dict:
 
     fix_server(config)
     if not credential:
-        print("warning: VAPI_CREDENTIAL_ID not set, webhook calls will be rejected if VAPI_WEBHOOK_SECRET is set", file=sys.stderr)
+        print("warning: VAPI_CREDENTIAL_ID not set; tool calls will rely on the X-Webhook-Token header only", file=sys.stderr)
     return config
 
 
 def main() -> None:
     load_env()
-    config = build()
-    if "--dry-run" in sys.argv:
+    dry_run = "--dry-run" in sys.argv
+    config = build(mask_secret=dry_run)
+    if dry_run:
         print(json.dumps(config, indent=2))
         return
     key = os.environ.get("VAPI_API_KEY") or sys.exit("VAPI_API_KEY is not set.")

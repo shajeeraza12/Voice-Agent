@@ -77,3 +77,13 @@ def test_either_header_is_enough(client, monkeypatch):
                        headers={"Authorization": "Bearer s3cret", "X-Vapi-Secret": "other"}).status_code == 200
     assert client.post("/channels/vapi/webhook", json=msg,
                        headers={"Authorization": "Bearer other", "X-Vapi-Secret": "other"}).status_code == 401
+
+
+def test_custom_webhook_token_header(client, monkeypatch):
+    # Vapi's end-of-call report arrives with an empty X-Vapi-Secret and no Authorization header;
+    # the secret comes through the X-Webhook-Token header set in the assistant's server.headers.
+    monkeypatch.setattr(settings, "vapi_webhook_secret", "s3cret")
+    msg = {"message": {"type": "end-of-call-report", "call": {"id": "c-token"}, "endedReason": "customer-ended-call"}}
+    assert client.post("/channels/vapi/webhook", json=msg, headers={"X-Vapi-Secret": ""}).status_code == 401
+    assert client.post("/channels/vapi/webhook", json=msg,
+                       headers={"X-Vapi-Secret": "", "X-Webhook-Token": "s3cret"}).status_code == 200

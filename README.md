@@ -162,7 +162,7 @@ Any host that runs a Dockerfile and any Postgres works the same way; nothing in 
 | Variable | Used by | Purpose |
 |---|---|---|
 | `DATABASE_URL` | server | Postgres in production, SQLite locally |
-| `VAPI_WEBHOOK_SECRET` | server | Shared secret checked on every webhook (`Authorization: Bearer` or `X-Vapi-Secret`) |
+| `VAPI_WEBHOOK_SECRET` | server, push script | Shared secret checked on every webhook (`Authorization: Bearer`, `X-Webhook-Token` or `X-Vapi-Secret`) |
 | `API_KEY` | server | Optional. If set, the REST API requires header `X-API-Key` |
 | `LOG_LEVEL` | server | Default `INFO` |
 | `VAPI_API_KEY` | push script | Vapi private key |
@@ -177,7 +177,7 @@ Every event is one JSON line on stdout: `call_started`, `tool_call` (with argume
 ## Security
 
 - No secrets in code; all keys come from environment variables.
-- Webhooks are rejected without the shared secret (constant-time comparison).
+- Webhooks are rejected without the shared secret (constant-time comparison). Vapi attaches the Bearer credential to tool calls but not to assistant-level messages (call status, end-of-call report), which arrive with an empty `X-Vapi-Secret` header. The push script therefore also sets the secret as a custom `X-Webhook-Token` header on the assistant's server config. Rejected requests are logged with header names and token lengths, never values.
 - All input is validated server-side: length limits, character sets, control characters rejected, unknown fields rejected, parameterised queries only.
 - The REST API and dashboard are deliberately open so reviewers can query them. Setting `API_KEY` locks the API. This is test data only; it is not a HIPAA-compliant system.
 
