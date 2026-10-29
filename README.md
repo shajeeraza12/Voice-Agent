@@ -8,11 +8,29 @@ Call a US phone number, talk to an AI intake coordinator, and get registered as 
 |---|---|
 | Phone number | +1 (858) 399-4010 |
 | API base URL | https://voice-agent-mvx9.onrender.com |
-| API docs (Swagger) | `<API base URL>/docs` |
-| Dashboard | `<API base URL>/` (read-only list of patients and recent calls) |
-| Credentials | None needed. The API is open for review (see Security). |
+| API docs (Swagger) | https://voice-agent-mvx9.onrender.com/docs |
+| Dashboard | https://voice-agent-mvx9.onrender.com/ |
+| Credentials | None needed. The API and dashboard are open for review (see Security). |
 
-Two seed patients exist for testing: Jane Doe (phone 415-555-0142) and Carlos Ramirez (212-555-0199). Calling and giving one of those numbers triggers the returning-patient flow.
+Two seed patients exist for testing: Jane Doe (phone 415-555-0142, DOB 04/12/1988) and Carlos Ramirez (212-555-0199, DOB 11/03/1975). Giving one of those phone numbers on a call triggers the returning-patient flow.
+
+## How to test it
+
+Call the number and register as a new patient. Things worth trying:
+
+- Give your answers out of order ("I'm in Austin, Texas, 78701") or several at once.
+- Correct something mid-call: "Actually, my last name is D-A-V-I-S, not D-A-V-I-E-S."
+- Give a future date of birth or a 3-digit phone number. The agent explains the problem and asks again for just that field.
+- Interrupt it while it is talking, or say "Can we start over?" halfway through.
+- Hang up halfway: no partial record is created, and the call is logged as `ended_without_save`.
+- Call again and give the same phone number (or 415-555-0142): the agent offers to update the existing record after verifying the date of birth.
+
+Then check the result:
+
+- Dashboard at `/`: the new patient appears within seconds. Click a call to read its transcript and the exact data the caller confirmed.
+- API: `GET /patients?last_name=<name>` or `GET /patients?phone_number=<number>`.
+
+Use made-up data. Phone numbers must be valid US numbers (area code and the middle three digits can't start with 0 or 1), so 512-555-0143 works and 555-123-4567 is rejected on purpose.
 
 ## What it does
 
@@ -24,6 +42,7 @@ Two seed patients exist for testing: Jane Doe (phone 415-555-0142) and Carlos Ra
 - Recognises returning callers by phone number and offers to update their record instead, after verifying their date of birth.
 - If the database is down, the agent says so out loud and asks the caller to call back. The collected payload is still logged.
 - Stores a transcript, summary and final payload for every call, linked to the patient record.
+- Dashboard at `/`: patient list with search, call counts, and a detail view per call with the transcript and the confirmed payload.
 
 ## Architecture
 
@@ -110,8 +129,11 @@ Dates are accepted as MM/DD/YYYY (the spec's format) or ISO, and returned as ISO
 Prompt design notes:
 
 - Short turns, one question at a time, no lists or formatting, numbers spoken in groups, names and emails spelled back letter by letter.
-- The phone number is collected early and offered from caller ID, so the returning-patient check happens before the caller spends time on an address.
-- Date of birth and phone are validated the moment they are given, so the caller is re-asked immediately instead of at the end.
+- The phone number is collected early, so the returning-patient check happens before the caller spends time on an address. The caller-ID number is offered only when it is a US (+1) number; web test calls have no caller ID and international numbers would fail validation.
+- Date of birth, phone, state and ZIP are validated the moment they are given, so the caller is re-asked immediately instead of after the read-back.
+- Every spelling is read back letter by letter and confirmed before moving on. If a "spelling" comes through with digits or whole words (a speech recognition error), the agent asks again rather than guessing, and after two failures asks for "R as in Robert" style spelling.
+- The closing line "You're all set, [first name]" must be spoken before the end-call tool runs, in a separate turn. Early testing showed the model calling save and hang-up together, so the caller never heard the confirmation.
+- End-of-speech detection uses Vapi's smart endpointing with a slightly longer wait than the default, because callers pause in the middle of names and digit strings and the default cut them off.
 - The read-back is split into two parts (identity and contact, then address and extras) so each chunk is short enough to follow by ear.
 - Updates to an existing record require the caller's date of birth. This stops someone with another person's phone from changing their record, and it is enforced by the tool, not just the prompt.
 
@@ -130,10 +152,38 @@ Prompt design notes:
 | Database down during save | Agent apologises out loud and says nothing was saved; payload logged to stdout; call marked `save_failed` |
 | Returning caller | Lookup by phone, offer to update, verify date of birth first |
 | Family sharing a phone | Phone is not unique; the agent asks which person if several match |
+| Misheard spelling | Read back letter by letter; garbled spellings are re-asked, not guessed |
+| Caller ID missing or non-US | Agent asks for the number instead of offering caller ID |
+| Caller goes silent | Agent checks in once ("Are you still there?") |
+
+## Project structure
+
+```
+app/
+  main.py                    composition root: registers channels and domains
+  settings.py                configuration from environment variables
+  dashboard.html             read-only dashboard served at /
+  core/                      domain-free: tool dispatcher, errors to speech, call log, envelope, logging, auth
+  channels/vapi/             Vapi webhook adapter (auth, payload parsing, reply format)
+  db/                        SQLAlchemy engine, session, base
+  domains/us_patient/
+    models.py                all validation rules (Pydantic)
+    orm.py                   patients table and constraints
+    service.py               the only code that reads or writes patients
+    api.py                   /patients routes
+    tools.py                 what the agent may do
+    prompt.md                system prompt, commented
+    assistant.json           Vapi assistant config (model, voice, transcriber, tools)
+migrations/                  Alembic
+scripts/seed.py              two demo patients (idempotent)
+scripts/push_assistant.py    create, update or inspect (--check) the Vapi assistant
+tests/                       validators, API, tools, Vapi webhook, architecture rule
+docs/ARCHITECTURE.md         how to add a domain or a channel
+```
 
 ## Setup
 
-Requirements: Python 3.11+, a Vapi account, and Postgres for production (SQLite works locally).
+Requirements: Python 3.10+, a Vapi account, and Postgres for production (SQLite works locally).
 
 ```bash
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
@@ -155,6 +205,8 @@ Deploying (Render and Neon):
 4. In Vapi, create a Bearer Token credential with the same secret, put its ID in `.env` as `VAPI_CREDENTIAL_ID`, set `PUBLIC_BASE_URL` to the Render URL, and run `python scripts/push_assistant.py`.
 5. Attach the assistant to the phone number in the Vapi dashboard.
 
+Change the assistant only through `prompt.md`, `assistant.json` and the push script. Editing it in the Vapi dashboard creates a draft version, and publishing that draft overwrites what the script pushed. `python scripts/push_assistant.py --check` prints what Vapi actually has stored (it never prints the secret).
+
 Any host that runs a Dockerfile and any Postgres works the same way; nothing in the code is Render- or Neon-specific.
 
 ## Environment variables
@@ -169,6 +221,32 @@ Any host that runs a Dockerfile and any Postgres works the same way; nothing in 
 | `VAPI_CREDENTIAL_ID` | push script | Vapi credential holding the webhook secret |
 | `VAPI_ASSISTANT_ID` | push script | Set after the first push so later pushes update instead of create |
 | `PUBLIC_BASE_URL` | push script | Public HTTPS URL of the server |
+
+## Testing
+
+Automated (`pytest -q`, 73 tests, run against SQLite):
+
+- Validators: every field rule, including normalisation (phone formats, state names, ZIP+4, sex synonyms) and rejections (future DOB, invalid NANP numbers, unknown fields, control characters).
+- API: status codes, envelope, filters, partial update, soft delete.
+- Tools: confirmation gate, field-level error messages, idempotent save per call, returning-caller lookup, DOB verification for updates, and a simulated database failure that must produce a spoken apology.
+- Vapi webhook: both tool-call payload shapes, all three auth headers, call lifecycle and transcript storage, fallback summary.
+- Architecture: `core/`, `channels/` and `db/` never import a domain.
+
+Manual, on live calls (browser calls through Vapi, each checked afterwards in the API and dashboard):
+
+| Scenario | Observed |
+|---|---|
+| Happy path | Patient saved through the tool, visible in `GET /patients` and the dashboard, call linked to the record |
+| Spelling read-back | Last name read back letter by letter before moving on |
+| City and state given before the street | Agent kept them and asked only for the street |
+| Invalid phone number | Rejected with the reason and asked again for just the phone |
+| Invalid ZIP (4 digits heard) | Rejected and asked again for just the ZIP |
+| Hang up mid-call | No record created; call logged as `ended_without_save` with transcript |
+| Data persists across a redeploy | Same patient IDs and timestamps after a manual redeploy |
+
+Implemented but not yet exercised on a live call: future date of birth, spoken spelling correction mid-read-back, interruption, start over, returning caller update, insurance and emergency contact opt-in, and database failure. The tool-level parts of these (date validation, idempotent save, DOB verification, spoken error on database failure) are covered by the automated tests above.
+
+Issues found in live testing and fixed: the agent cut callers off mid-name (longer end-of-speech detection), accepted a misheard spelling (mandatory letter-by-letter confirmation), offered caller ID on calls that had none (US numbers only), and hung up before saying "You're all set" (closing line must be spoken in a separate turn before ending).
 
 ## Observability
 
@@ -187,7 +265,9 @@ Every event is one JSON line on stdout: `call_started`, `tool_call` (with argume
 - Phone numbers follow NANP rules (area code and exchange can't start with 0 or 1), so made-up numbers like 555-123-4567 are rejected with an explanation.
 - "Date of birth not in the future" is enforced in the application, not as a database CHECK, because CURRENT_DATE is not allowed in a CHECK constraint.
 - Phone is not unique, by design (families share numbers). Duplicate detection is a prompt-driven lookup, not a hard constraint.
-- Speech recognition of spelled letters and emails over a phone line is the weakest link; the agent always spells back to catch errors.
+- Speech recognition of spelled letters and emails over a phone line is the weakest link, and noticeably weaker for non-American accents (seen in testing with Deepgram Nova-3). The agent spells back and re-asks to catch errors, but a strong accent can still take a couple of attempts.
+- The server is on Render's free tier, which sleeps after 15 minutes without traffic. The first request after that can take up to a minute; if a call arrives while it is asleep, the agent's first check may be slow. A paid instance removes this.
+- If Vapi sends no call summary, the server stores a short factual one (saved or not, number of caller turns, end reason) instead of an LLM summary.
 - Identity verification for updates is date of birth only.
 - The dashboard has no authentication.
 

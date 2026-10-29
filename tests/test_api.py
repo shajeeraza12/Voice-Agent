@@ -87,4 +87,4 @@ def test_unknown_route_uses_envelope(client):
 
 def test_health_and_dashboard(client):
     assert client.get("/health").json()["data"]["database"] == "ok"
-    assert "Patient Registry" in client.get("/").text
+    assert "Patient intake" in client.get("/").text
