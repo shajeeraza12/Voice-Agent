@@ -7,7 +7,7 @@ failure, because Vapi reads errors from the body; a non-200 can leave the caller
 import hmac
 import logging
 
-from fastapi import APIRouter, Body, Header
+from fastapi import APIRouter, Body, Request
 
 from app.channels.vapi import payloads
 from app.core.calls import CallStatus, finish_call, record_call_safely
@@ -24,29 +24,41 @@ class Unauthorized(AppError):
     code = "unauthorized"
 
 
-def _check_secret(authorization: str | None, x_vapi_secret: str | None) -> None:
+def _matches(candidate: str | None, expected: str) -> bool:
+    return bool(candidate) and hmac.compare_digest(candidate.strip().encode(), expected.encode())
+
+
+def _check_secret(request: Request, message_kind: str) -> None:
+    """Accept the request if either supported header carries the shared secret:
+    'Authorization: Bearer <secret>' (Vapi Bearer credential) or 'X-Vapi-Secret: <secret>' (legacy)."""
     expected = settings.vapi_webhook_secret
     if not expected:
         return  # local development only; README says to always set it in production
-    supplied = x_vapi_secret or ""
-    if authorization and authorization.lower().startswith("bearer "):
-        supplied = authorization[7:]
-    if not hmac.compare_digest(supplied.encode(), expected.encode()):
-        log_event("vapi_auth_failed", level=logging.WARNING)
-        raise Unauthorized("Invalid webhook credentials.")
+    authorization = request.headers.get("authorization") or ""
+    bearer = authorization[7:] if authorization.lower().startswith("bearer ") else None
+    x_vapi_secret = request.headers.get("x-vapi-secret")
+    if _matches(bearer, expected) or _matches(x_vapi_secret, expected):
+        return
+    # Diagnostics without leaking secrets: which headers arrived and how long the tokens were.
+    log_event(
+        "vapi_auth_failed", level=logging.WARNING,
+        message_type=message_kind,
+        auth_scheme=authorization.split(" ")[0] if authorization else None,
+        bearer_len=len(bearer) if bearer else 0,
+        x_vapi_secret_len=len(x_vapi_secret) if x_vapi_secret else 0,
+        expected_len=len(expected),
+        header_names=sorted(k for k in request.headers.keys() if k.lower() not in ("cookie",)),
+    )
+    raise Unauthorized("Invalid webhook credentials.")
 
 
 @router.post("/webhook")
-def webhook(
-    body: dict = Body(...),
-    authorization: str | None = Header(default=None),
-    x_vapi_secret: str | None = Header(default=None),
-):
+def webhook(request: Request, body: dict = Body(...)):
     # Sync handler on purpose: FastAPI runs it in a thread pool, so blocking database work
     # in tools doesn't stall other concurrent calls.
-    _check_secret(authorization, x_vapi_secret)
     message = body.get("message") or {}
     kind = payloads.message_type(message)
+    _check_secret(request, kind)
     cid = payloads.call_id(message)
     caller = payloads.caller_number(message)
 

@@ -65,3 +65,15 @@ def test_end_of_call_keeps_saved_status_and_links_patient(client, valid_patient)
 
 def test_other_messages_ignored(client):
     assert client.post("/channels/vapi/webhook", json={"message": {"type": "speech-update"}}).json() == {}
+
+
+def test_either_header_is_enough(client, monkeypatch):
+    monkeypatch.setattr(settings, "vapi_webhook_secret", "s3cret")
+    msg = {"message": {"type": "speech-update"}}
+    # A wrong Authorization header must not hide a correct X-Vapi-Secret, and vice versa.
+    assert client.post("/channels/vapi/webhook", json=msg,
+                       headers={"Authorization": "Bearer other", "X-Vapi-Secret": "s3cret"}).status_code == 200
+    assert client.post("/channels/vapi/webhook", json=msg,
+                       headers={"Authorization": "Bearer s3cret", "X-Vapi-Secret": "other"}).status_code == 200
+    assert client.post("/channels/vapi/webhook", json=msg,
+                       headers={"Authorization": "Bearer other", "X-Vapi-Secret": "other"}).status_code == 401
